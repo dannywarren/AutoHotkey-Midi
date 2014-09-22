@@ -61,7 +61,11 @@ Global midiEventTooltips := False
 Class Midi
 {
 
+  ; Class variables
   midiInDevice := -1
+  midiInDll    := 0
+  midiInHandle := 0
+
 
   ; Instance creation
   __New( newMidiInDevice:=-1 )
@@ -145,26 +149,26 @@ Class Midi
     ; Create variable to store the handle the dll open will give us
     ; NOTE: Creating variables this way doesn't work with class variables, so
     ; we have to create it locally and then store it in the class later after
-    VarSetCapacity( midiIn, 4, 0 )
+    VarSetCapacity( midiInHandle, 4, 0 )
 
     ; Get the autohotkey window to attach the midi events to
     thisWindow := WinExist()
 
     ; Open the midi device and attach event callbacks
-    midiInOpenResult := DllCall( "winmm.dll\midiInOpen", UINT, &midiIn, UINT, this.midiInDevice, UINT, thisWindow, UINT, 0, UINT, MIDI_CALLBACK_WINDOW )
+    midiInOpenResult := DllCall( "winmm.dll\midiInOpen", UINT, &midiInHandle, UINT, this.midiInDevice, UINT, thisWindow, UINT, 0, UINT, MIDI_CALLBACK_WINDOW )
 
     ; Error handling
-    If ( midiInOpenResult || ! midiIn )
+    If ( midiInOpenResult || ! midiInHandle )
     {
       MsgBox, Failed to open midi in device
       ExitApp
     }
 
     ; Fetch the actual handle value from the pointer
-    midiIn := NumGet( midiIn, UINT )
+    midiInHandle := NumGet( midiInHandle, UINT )
 
     ; Start monitoring midi signals
-    midiInStartResult := DllCall( "winmm.dll\midiInStart", UINT, midiIn )
+    midiInStartResult := DllCall( "winmm.dll\midiInStart", UINT, midiInHandle )
 
     ; Error handling
     If ( midiInStartResult )
@@ -175,10 +179,10 @@ Class Midi
 
     ; Save the midi input handle to our class instance now that we are done
     ; messing with it
-    this.midiIn := midiIn
+    this.midiInHandle := midiInHandle
 
     ; Create a spot in our global event storage for this midi input handle
-    __MidiInEvent[this.midiIn] := {}
+    __MidiInEvent[this.midiInHandle] := {}
 
     ; Register a callback for each midi event
     ; We only need to do this once per instance of our class, so if another
@@ -205,7 +209,7 @@ Class Midi
   {
 
     ; Bail out if we don"t have a midi in handle open
-    If ( ! this.midiIn )
+    If ( ! this.midiInHandle )
     {
       Return
     }
@@ -226,10 +230,10 @@ Class Midi
     __midiInListeners--
 
     ; Destroy any midi in events that might be left over
-    __MidiInEvent[this.midiIn] := {}
+    __MidiInEvent[this.midiInHandle] := {}
 
     ; Stop monitoring midi
-    midiInStopResult = DllCall( "winmm.dll\midiInStop", UINT, this.midiIn )
+    midiInStopResult = DllCall( "winmm.dll\midiInStop", UINT, this.midiInHandle )
 
     ; Error handling
     If ( midiInStartResult )
@@ -239,7 +243,7 @@ Class Midi
     }
 
     ; Close the midi handle
-    midiInStopResult = DllCall( "winmm.dll\midiInClose", UINT, this.midiIn )
+    midiInStopResult = DllCall( "winmm.dll\midiInClose", UINT, this.midiInHandle )
 
     ; Error handling
     If ( midiInStartResult )
@@ -255,12 +259,12 @@ Class Midi
   MidiInEvent()
   {
 
-    If ( ! this.midiIn )
+    If ( ! this.midiInHandle )
     {
       Return
     }
 
-    Return __MidiInEvent[this.midiIn]
+    Return __MidiInEvent[this.midiInHandle]
 
   }
 
