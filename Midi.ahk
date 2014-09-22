@@ -255,8 +255,8 @@ Class Midi
   }
 
 
-  ; Returns the last midi in event
-  MidiInEvent()
+  ; Returns the last midi in event values
+  LastMidiInEvent()
   {
 
     If ( ! this.midiInHandle )
@@ -266,6 +266,20 @@ Class Midi
 
     Return __MidiInEvent[this.midiInHandle]
 
+  }
+
+
+  ; Syntactic sugar for returning last midi in event
+  Values()
+  {
+    Return this.LastMidiInEvent
+  }
+
+
+  ; Syntactic sugar for returning last midi in event
+  Event()
+  {
+    Return this.LastMidiInEvent
   }
 
 
