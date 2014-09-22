@@ -53,8 +53,8 @@ Global __midiLabel := "Midi"
 ; Enable or disable label event handling
 Global __midiLabelEvents  := True
 
-; Enable or disable lazy midi in event debugging
-Global __midiInDebug := False
+; Enable or disable lazy midi in event debugging via tooltips
+Global __midiInTooltips := False
 
 
 ; Midi class interface
@@ -64,21 +64,11 @@ Class Midi
   midiInDevice := -1
 
   ; Instance creation
-  __New( newMidiInDevice )
+  __New( newMidiInDevice:=-1 )
   {
 
-    ; Until we implement a better setter/getter for the midi device and
-    ; add it to the menu options, we will just pass the id in 
-    if ( newMidiInDevice < 0 )
-    {
-      MsgBox, No midi input device specified
-      ExitApp
-    }
-
-    this.midiInDevice := newMidiInDevice
-
+    this.SetMidiInDevice( newMidiInDevice )
     this.LoadMidi()
-    this.StartMidiIn()
 
   }
 
@@ -89,6 +79,28 @@ Class Midi
 
     this.StopMidiIn()
     this.UnloadMidi()
+
+  }
+
+
+  ; Set the current midi in device
+  SetMidiInDevice( newMidiInDevice )
+  {
+
+  	; Bail out if this is already the midi device we are using
+  	If ( newMidiInDevice == this.midiInDevice )
+  		Return
+ 
+ 		; Bail out if no new midi in device was given
+ 		If ( newMidiInDevice < 0 )
+ 			Return
+
+ 		; Stop listening to the current midi device (if applicable)
+ 		this.StopMidiIn()
+
+ 		; Set the new midi in device and then start listening to it
+ 		this.midiInDevice := newMidiInDevice
+ 		this.StartMidiIn()
 
   }
 
@@ -464,8 +476,6 @@ __MidiInCallback( wParam, lParam, msg )
   ; appropriate midi class an access it later
   __MidiInEvent[wParam] := midiEvent
 
-	__MidiInDebug( labelCallbacks )
-
   ; Iterate over all the label callbacks we built during this event and jump
   ; to them now (if they exist elsewhere in the code)
   If ( __midiLabelEvents )
@@ -478,16 +488,13 @@ __MidiInCallback( wParam, lParam, msg )
   }
 
   ; Call debugging if enabled
-  if ( __midiInDebug )
-  {
-    __MidiInDebug( midiEvent )
-  }
+  __MidiInEventDebug( midiEvent )
 
 }
 
 
-; Tooltip containing all the data from a midi event
-__MidiInDebug( midiEvent )
+; Send event information to a listening debugger
+__MidiInEventDebug( midiEvent )
 {
 
   debugStr := ""
@@ -495,7 +502,14 @@ __MidiInDebug( midiEvent )
   For key, value In midiEvent
     debugStr .= key . ":" . value . "`n"
 
-  ToolTip, %debugStr%
+  debugStr .= "---`n"
+
+  ; Always output event debug to any listening debugger
+  OutputDebug, % debugStr 
+
+  ; If lazy tooltip debugging is enabled, do that too
+  if __midiInTooltips
+  	ToolTip, % debugStr
 
 }
 
