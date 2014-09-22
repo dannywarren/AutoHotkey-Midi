@@ -1,6 +1,6 @@
 # AutoHotkey-Midi
 
-AutoHotkey-Midi adds MIDI input functionality to AutoHotkey.
+Add MIDI input event handling to your AutoHotkey scripts
 
 ```ahk
 
@@ -32,6 +32,7 @@ BSD
 
 ## TODO
 
+* Documentation!
 * Midi output event support
 * Midi device selection in autohotkey menu
 * Midi reinit on device change
