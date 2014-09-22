@@ -48,13 +48,13 @@ Global __midiInEvent := {}
 Global __midiInListeners := 0
 
 ; Default label names
-Global __midiLabel := "Midi"
+Global midiLabel := "Midi"
 
 ; Enable or disable label event handling
-Global __midiLabelEvents  := True
+Global midiLabelEvents  := True
 
 ; Enable or disable lazy midi in event debugging via tooltips
-Global __midiInTooltips := False
+Global midiEventTooltips := False
 
 
 ; Midi class interface
@@ -279,7 +279,7 @@ __MidiInCallback( wParam, lParam, msg )
 
   ; Will hold the labels we call so the user can capture this midi event, we
   ; always start with a generic ":Midi" label so it always gets called first
-  labelCallbacks := [ __midiLabel ]
+  labelCallbacks := [ midiLabel ]
 
   ; Grab the raw midi bytes
   rawBytes := lParam
@@ -329,7 +329,7 @@ __MidiInCallback( wParam, lParam, msg )
   }
 
   ; Add a label callback for the status, ie ":MidiNoteOn"
-  labelCallbacks.Insert( __midiLabel . midiEvent.status )
+  labelCallbacks.Insert( midiLabel . midiEvent.status )
 
   ; Determine how to handle the one or two data bytes sent along with the event
   ; based on what type of status event was seen
@@ -356,9 +356,9 @@ __MidiInCallback( wParam, lParam, msg )
     midiEvent.noteName := midiEvent.note . midiEvent.octave
 
     ; Add label callbacks for notes, ie ":MidiNoteOnA", ":MidiNoteOnA5", ":MidiNoteOn97"
-    labelCallbacks.Insert( __midiLabel . midiEvent.status . midiEvent.note )
-    labelCallbacks.Insert( __midiLabel . midiEvent.status . midiEvent.noteName )
-    labelCallbacks.Insert( __midiLabel . midiEvent.status . midiEvent.noteNumber )
+    labelCallbacks.Insert( midiLabel . midiEvent.status . midiEvent.note )
+    labelCallbacks.Insert( midiLabel . midiEvent.status . midiEvent.noteName )
+    labelCallbacks.Insert( midiLabel . midiEvent.status . midiEvent.noteNumber )
 
   }
   else if ( midiEvent.status == "ControlChange" )
@@ -369,7 +369,7 @@ __MidiInCallback( wParam, lParam, msg )
     midiEvent.value      := data2
 
     ; Add label callback for this controller change, ie ":MidiControlChange12"
-    labelCallbacks.Insert( __midiLabel . midiEvent.status . midiEvent.controller )
+    labelCallbacks.Insert( midiLabel . midiEvent.status . midiEvent.controller )
 
   }
   else if ( midiEvent.status == "ProgramChange" )
@@ -379,7 +379,7 @@ __MidiInCallback( wParam, lParam, msg )
     midiEvent.program := data1
 
     ; Add label callback for this program change, ie ":MidiProgramChange2"
-    labelCallbacks.Insert( __midiLabel . midiEvent.status . midiEvent.program )
+    labelCallbacks.Insert( midiLabel . midiEvent.status . midiEvent.program )
 
   }
   else if ( midiEvent.status == "ChannelPressure" )
@@ -455,7 +455,7 @@ __MidiInCallback( wParam, lParam, msg )
     }
     
     ; Add label callback for sysex event, ie: ":MidiClock" or ":MidiStop"
-    labelCallbacks.Insert( __midiLabel . midiEvent.sysex )
+    labelCallbacks.Insert( midiLabel . midiEvent.sysex )
 
   }
 
@@ -478,7 +478,7 @@ __MidiInCallback( wParam, lParam, msg )
 
   ; Iterate over all the label callbacks we built during this event and jump
   ; to them now (if they exist elsewhere in the code)
-  If ( __midiLabelEvents )
+  If ( midiLabelEvents )
   {
 	  For labelIndex, labelName In labelCallbacks
 	  {
@@ -508,7 +508,7 @@ __MidiInEventDebug( midiEvent )
   OutputDebug, % debugStr 
 
   ; If lazy tooltip debugging is enabled, do that too
-  if __midiInTooltips
+  if midiEventTooltips
   	ToolTip, % debugStr
 
 }
