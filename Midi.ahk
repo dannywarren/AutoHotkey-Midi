@@ -173,15 +173,13 @@ Class Midi
     ; instance already did it then we don't need to
     if ( ! __midiInListeners )
     {
-
       OnMessage( MIDI_OPEN,      "__MidiInCallback" )
       OnMessage( MIDI_CLOSE,     "__MidiInCallback" )
       OnMessage( MIDI_DATA,      "__MidiInCallback" )
       OnMessage( MIDI_LONGDATA,  "__MidiInCallback" )
       OnMessage( MIDI_ERROR,     "__MidiInCallback" )
       OnMessage( MIDI_LONGERROR, "__MidiInCallback" )
-      OnMessage( MIDI_MOREDATA,  "__MidiInCallback" )
-      
+      OnMessage( MIDI_MOREDATA,  "__MidiInCallback" ) 
     }
 
     ; Increment the number of midi listeners
@@ -267,6 +265,10 @@ __MidiInCallback( wParam, lParam, msg )
   ; Will hold the midi event object we are building for this event
   midiEvent := {}
 
+  ; Will hold the labels we call so the user can capture this midi event, we
+  ; always start with a generic ":Midi" label so it always gets called first
+  labelCallbacks := [ __midiLabel ]
+
   ; Grab the raw midi bytes
   rawBytes := lParam
 
@@ -314,6 +316,9 @@ __MidiInCallback( wParam, lParam, msg )
     Return
   }
 
+  ; Add a label callback for the status, ie ":MidiNoteOn"
+  labelCallbacks.Insert( __midiLabel . midiEvent.status )
+
   ; Determine how to handle the one or two data bytes sent along with the event
   ; based on what type of status event was seen
   if ( midiEvent.status == "NoteOff" || midiEvent.status == "NoteOn" || midiEvent.status == "AfterTouch" )
@@ -338,24 +343,46 @@ __MidiInCallback( wParam, lParam, msg )
     ; Create a friendly name for the note and octave, ie: "C4"
     midiEvent.noteName := midiEvent.note . midiEvent.octave
 
+    ; Add label callbacks for notes, ie ":MidiNoteOnA", ":MidiNoteOnA5", ":MidiNoteOn97"
+    labelCallbacks.Insert( __midiLabel . midiEvent.status . midiEvent.note )
+    labelCallbacks.Insert( __midiLabel . midiEvent.status . midiEvent.noteName )
+    labelCallbacks.Insert( __midiLabel . midiEvent.status . midiEvent.noteNumber )
 
   }
   else if ( midiEvent.status == "ControlChange" )
   {
+
+  	; Store controller number and value change
     midiEvent.controller := data1
     midiEvent.value      := data2
+
+    ; Add label callback for this controller change, ie ":MidiControlChange12"
+    labelCallbacks.Insert( __midiLabel . midiEvent.status . midiEvent.controller )
+
   }
   else if ( midiEvent.status == "ProgramChange" )
   {
+
+  	; Store program number change
     midiEvent.program := data1
+
+    ; Add label callback for this program change, ie ":MidiProgramChange2"
+    labelCallbacks.Insert( __midiLabel . midiEvent.status . midiEvent.program )
+
   }
   else if ( midiEvent.status == "ChannelPressure" )
   {
+    
+    ; Store pressure change value
     midiEvent.pressure := data1
+
   }
   else if ( midiEvent.status == "PitchWheel" )
   {
+
+  	; Store pitchwheel change, which is a combination of both data bytes 
     midiEvent.pitch := ( data2 << 7 ) + data1
+
   }
   else if ( midiEvent.status == "Sysex" )
   {
@@ -415,6 +442,9 @@ __MidiInCallback( wParam, lParam, msg )
       midiEvent.sysex := "Reset"
     }
     
+    ; Add label callback for sysex event, ie: ":MidiClock" or ":MidiStop"
+    labelCallbacks.Insert( __midiLabel . midiEvent.sysex )
+
   }
 
   ; Channel is always handled the same way for all midi events except sysex
@@ -434,10 +464,17 @@ __MidiInCallback( wParam, lParam, msg )
   ; appropriate midi class an access it later
   __MidiInEvent[wParam] := midiEvent
 
-  ; Call even labels for this event if label handling is enabled
-  if ( __midiLabelEvents )
+	__MidiInDebug( labelCallbacks )
+
+  ; Iterate over all the label callbacks we built during this event and jump
+  ; to them now (if they exist elsewhere in the code)
+  If ( __midiLabelEvents )
   {
-    __MidiInLabel( midiEvent )
+	  For labelIndex, labelName In labelCallbacks
+	  {
+	  	If IsLabel( labelName )
+	  		Gosub %labelName%
+	  }  	
   }
 
   ; Call debugging if enabled
@@ -449,75 +486,13 @@ __MidiInCallback( wParam, lParam, msg )
 }
 
 
-; For a given midi event, call any global labels that are applicable to the
-; midi event
-__MidiInLabel( midiEvent )
-{
-
-  ; Always call the generic midi event label, ie: ":Midi"
-  midiLabel := __midiLabel
-  If IsLabel( midiLabel )
-    Gosub %midiLabel%
-
-  ; Call a label for the specific midi status, ie ":MidiNoteOn"
-  midiStatusLabel := midiLabel . midiEvent.status
-  If IsLabel( midiStatusLabel )
-    Gosub %midiStatusLabel%
-
-  ; Add note labels for messages with notes
-  if ( midiEvent.status == "NoteOff" || midiEvent.status == "NoteOn" || midiEvent.status == "AfterTouch" )
-  {
-
-    ; Call a label for the specific note, ie ":MidiNoteOnA"
-    midiNoteLabel := midiStatusLabel . midiEvent.note 
-    If IsLabel( midiNoteLabel )
-      Gosub %midiNoteLabel%
-
-    ; Call a label for the specific note and octave, ie ":MidiNoteOnA5"
-    midiNoteNameLabel := midiStatusLabel . midiEvent.noteName 
-    If IsLabel( midiNoteLabel )
-      Gosub %midiNoteNameLabel%
-
-
-    ; Call a label for the specific note number, ie ":MidiNoteOn93"
-    midiNoteNumberLabel := midiStatusLabel . midiEvent.noteNumber
-    If IsLabel( midiNoteNumberLabel )
-      Gosub %midiNoteNumberLabel%
-
-  }
-
-  ; Add note labels for messages with controllers
-  if ( midiEvent.status == "ControlChange" )
-  {
-
-    ; Call a label for the specific controller, ie ":MidiControlChange23"
-    midiControllerLabel := midiStatusLabel . midiEvent.controller
-    If IsLabel( midiControllerLabel )
-      Gosub %midiControllerLabel%
-
-  }
-
-  ; Add labels for sysex message sub-statuses if applicable
-  if ( midiEvent.status == "Sysex" )
-  {
-
-    ; Call a label for the specific sysex event, ie ":MidiClock"
-    midiSysexLabel := midiLabel . midiEvent.sysex 
-    If IsLabel( midiSysexLabel )
-      Gosub %midiSysexLabel%
-
-  }
-
-}
-
-
 ; Tooltip containing all the data from a midi event
 __MidiInDebug( midiEvent )
 {
 
   debugStr := ""
 
-  for key, value in midiEvent
+  For key, value In midiEvent
     debugStr .= key . ":" . value . "`n"
 
   ToolTip, %debugStr%
