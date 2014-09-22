@@ -26,6 +26,15 @@ Global MIDI_ERROR     := 0x3C5
 Global MIDI_LONGERROR := 0x3C6
 Global MIDI_MOREDATA  := 0x3CC
 
+; Defines the size of the standard chromatic scale
+Global MIDI_NOTE_SIZE := 12
+
+; Defines the midi notes 
+Global MIDI_NOTES     := [ "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" ]
+
+; Defines the octaves for midi notes
+Global MIDI_OCTAVES   := [ -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8 ]
+
 
 ; This is where we will keep the most recent midi in event data so that it can
 ; be accessed via the Midi object, since we cannot store it in the object due
@@ -39,11 +48,10 @@ Global __midiInEvent := {}
 Global __midiInListeners := 0
 
 ; Default label names
-Global __midiLabel   := "Midi"
-Global __midiInLabel := "MidiIn"
+Global __midiLabel := "Midi"
 
 ; Enable or disable label event handling
-Global __midiInLabelEvents  := True
+Global __midiLabelEvents  := True
 
 ; Enable or disable lazy midi in event debugging
 Global __midiInDebug := False
@@ -310,13 +318,32 @@ __MidiInCallback( wParam, lParam, msg )
   ; based on what type of status event was seen
   if ( midiEvent.status == "NoteOff" || midiEvent.status == "NoteOn" || midiEvent.status == "AfterTouch" )
   {
-    midiEvent.note     := data1
-    midiEvent.velocity := data2
+
+    ; Store the raw note number and velocity data
+    midiEvent.noteNumber  := data1
+    midiEvent.velocity    := data2
+
+    ; Figure out which chromatic note this note number represents
+    noteScaleNumber := Mod( midiEvent.noteNumber, MIDI_NOTE_SIZE )
+
+    ; Look up the name of the note in the scale
+    midiEvent.note := MIDI_NOTES[ noteScaleNumber + 1 ]
+
+    ; Determine the octave of the note in the scale 
+    noteOctaveNumber := Floor( midiEvent.noteNumber / MIDI_NOTE_SIZE )
+
+    ; Look up the octave for the note
+    midiEvent.octave := MIDI_OCTAVES[ noteOctaveNumber + 1 ]
+
+    ; Create a friendly name for the note and octave, ie: "C4"
+    midiEvent.noteName := midiEvent.note . midiEvent.octave
+
+
   }
   else if ( midiEvent.status == "ControlChange" )
   {
-    midiEvent.number := data1
-    midiEvent.value  := data2
+    midiEvent.controller := data1
+    midiEvent.value      := data2
   }
   else if ( midiEvent.status == "ProgramChange" )
   {
@@ -408,7 +435,7 @@ __MidiInCallback( wParam, lParam, msg )
   __MidiInEvent[wParam] := midiEvent
 
   ; Call even labels for this event if label handling is enabled
-  if ( __midiInLabelEvents )
+  if ( __midiLabelEvents )
   {
     __MidiInLabel( midiEvent )
   }
@@ -432,20 +459,43 @@ __MidiInLabel( midiEvent )
   If IsLabel( midiLabel )
     Gosub %midiLabel%
 
-  ; Always call the generic midi in event label, ie ":MidiIn"
-  midiInLabel := __midiInLabel
-  If IsLabel( midiInLabel )
-    Gosub %midiInLabel%
-
   ; Call a label for the specific midi status, ie ":MidiNoteOn"
   midiStatusLabel := midiLabel . midiEvent.status
   If IsLabel( midiStatusLabel )
     Gosub %midiStatusLabel%
 
-  ; Call a label for the specific midi in status, ie ":MidiInNoteOn"
-  midiInStatusLabel := midiInLabel . midiEvent.status
-  If IsLabel( midiInStatusLabel )
-    Gosub %midiInStatusLabel%
+  ; Add note labels for messages with notes
+  if ( midiEvent.status == "NoteOff" || midiEvent.status == "NoteOn" || midiEvent.status == "AfterTouch" )
+  {
+
+    ; Call a label for the specific note, ie ":MidiNoteOnA"
+    midiNoteLabel := midiStatusLabel . midiEvent.note 
+    If IsLabel( midiNoteLabel )
+      Gosub %midiNoteLabel%
+
+    ; Call a label for the specific note and octave, ie ":MidiNoteOnA5"
+    midiNoteNameLabel := midiStatusLabel . midiEvent.noteName 
+    If IsLabel( midiNoteLabel )
+      Gosub %midiNoteNameLabel%
+
+
+    ; Call a label for the specific note number, ie ":MidiNoteOn93"
+    midiNoteNumberLabel := midiStatusLabel . midiEvent.noteNumber
+    If IsLabel( midiNoteNumberLabel )
+      Gosub %midiNoteNumberLabel%
+
+  }
+
+  ; Add note labels for messages with controllers
+  if ( midiEvent.status == "ControlChange" )
+  {
+
+    ; Call a label for the specific controller, ie ":MidiControlChange23"
+    midiControllerLabel := midiStatusLabel . midiEvent.controller
+    If IsLabel( midiControllerLabel )
+      Gosub %midiControllerLabel%
+
+  }
 
   ; Add labels for sysex message sub-statuses if applicable
   if ( midiEvent.status == "Sysex" )
@@ -455,11 +505,6 @@ __MidiInLabel( midiEvent )
     midiSysexLabel := midiLabel . midiEvent.sysex 
     If IsLabel( midiSysexLabel )
       Gosub %midiSysexLabel%
-
-    ; Call a label for the specific sysex event, ie ":MidiInClock"
-    midiInSysexLabel := midiInLabel . midiEvent.sysex 
-    If IsLabel( midiInSysexLabel )
-      Gosub %midiInSysexLabel%
 
   }
 
