@@ -87,20 +87,20 @@ Class Midi
   SetMidiInDevice( newMidiInDevice )
   {
 
-  	; Bail out if this is already the midi device we are using
-  	If ( newMidiInDevice == this.midiInDevice )
-  		Return
+    ; Bail out if this is already the midi device we are using
+    If ( newMidiInDevice == this.midiInDevice )
+      Return
  
- 		; Bail out if no new midi in device was given
- 		If ( newMidiInDevice < 0 )
- 			Return
+    ; Bail out if no new midi in device was given
+    If ( newMidiInDevice < 0 )
+      Return
 
- 		; Stop listening to the current midi device (if applicable)
- 		this.StopMidiIn()
+    ; Stop listening to the current midi device (if applicable)
+    this.StopMidiIn()
 
- 		; Set the new midi in device and then start listening to it
- 		this.midiInDevice := newMidiInDevice
- 		this.StartMidiIn()
+    ; Set the new midi in device and then start listening to it
+    this.midiInDevice := newMidiInDevice
+    this.StartMidiIn()
 
   }
 
@@ -364,7 +364,7 @@ __MidiInCallback( wParam, lParam, msg )
   else if ( midiEvent.status == "ControlChange" )
   {
 
-  	; Store controller number and value change
+    ; Store controller number and value change
     midiEvent.controller := data1
     midiEvent.value      := data2
 
@@ -375,7 +375,7 @@ __MidiInCallback( wParam, lParam, msg )
   else if ( midiEvent.status == "ProgramChange" )
   {
 
-  	; Store program number change
+    ; Store program number change
     midiEvent.program := data1
 
     ; Add label callback for this program change, ie ":MidiProgramChange2"
@@ -392,7 +392,7 @@ __MidiInCallback( wParam, lParam, msg )
   else if ( midiEvent.status == "PitchWheel" )
   {
 
-  	; Store pitchwheel change, which is a combination of both data bytes 
+    ; Store pitchwheel change, which is a combination of both data bytes 
     midiEvent.pitch := ( data2 << 7 ) + data1
 
   }
@@ -480,11 +480,11 @@ __MidiInCallback( wParam, lParam, msg )
   ; to them now (if they exist elsewhere in the code)
   If ( midiLabelEvents )
   {
-	  For labelIndex, labelName In labelCallbacks
-	  {
-	  	If IsLabel( labelName )
-	  		Gosub %labelName%
-	  }  	
+    For labelIndex, labelName In labelCallbacks
+    {
+      If IsLabel( labelName )
+        Gosub %labelName%
+    }   
   }
 
   ; Call debugging if enabled
@@ -509,7 +509,7 @@ __MidiInEventDebug( midiEvent )
 
   ; If lazy tooltip debugging is enabled, do that too
   if midiEventTooltips
-  	ToolTip, % debugStr
+    ToolTip, % debugStr
 
 }
 
