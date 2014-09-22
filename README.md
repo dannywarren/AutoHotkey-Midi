@@ -8,15 +8,9 @@ Add MIDI input event handling to your AutoHotkey scripts
 
 midi := new Midi( 5 )
 
-MidiNoteOn:
+MidiNoteOnA4:
 	
-	midiEvent := midi.MidiInEvent()
-
-	if ( midiEvent.note == 57 ) 
-	{
-		MsgBox You played A4!
-	}
-	
+	MsgBox You played note A4!
 	Return
 
 ```
@@ -36,5 +30,4 @@ BSD
 * Midi output event support
 * Midi device selection in autohotkey menu
 * Midi reinit on device change
-* More label jumps based on data and not just event status (like "MidiNoteOnA5" etc)
 * Object scoped callbacks (most likely not possible with pure autothotkey)
