@@ -1,5 +1,9 @@
 ;
 ; Midi.ahk
+; Add MIDI input event handling to your AutoHotkey scripts
+;
+; Danny Warren <danny@dannywarren.com>
+; https://github.com/dannywarren/AutoHotkey-Midi
 ;
 
 
@@ -62,7 +66,7 @@ Class Midi
       MsgBox, No midi input device specified
       ExitApp
     }
-    
+
     this.midiInDevice := newMidiInDevice
 
     this.LoadMidi()
