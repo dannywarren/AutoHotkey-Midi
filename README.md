@@ -7,12 +7,18 @@ Add MIDI input event handling to your AutoHotkey scripts
 #include AutoHotkey-Midi/Midi.ahk
 
 midi := new Midi()
-
 midi.OpenMidiIn( 5 )
 
+Return
+
 MidiNoteOnA4:
-	
 	MsgBox You played note A4!
+	Return
+
+MidiControlChange1:
+	cc := midi.MidiIn()
+	ccValue := cc.value
+	MsgBox You set the mod wheel to %cc.Value%
 	Return
 
 ```
