@@ -11,6 +11,11 @@
 ; attach midi events to
 Gui, +LastFound
 
+; Defines the string size of midi devices returned by windows (see mmsystem.h)
+Global MIDI_DEVICE_NAME_LENGTH := 32
+
+; Defines the size of a midi input struct MIDIINCAPS (see mmsystem.h)
+Global MIDI_DEVICE_IN_STRUCT_LENGTH  := 44
 
 ; Defines for midi event callbacks (see mmsystem.h)
 Global MIDI_CALLBACK_WINDOW   := 0x10000
@@ -43,68 +48,54 @@ Global MIDI_OCTAVES   := [ -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8 ]
 ; at least we won't clobber midi events from other instances of the object
 Global __midiInEvent := {}
 
-; Track the number of instances that may be listening, so that we can know when
-; to set up and tearn down event callbacks
-Global __midiInListeners := 0
+; List of all midi input devices on the system
+Global __midiInDevices := {}
+
+; List of midi input devices to listen to messages for, we do this globally
+; since only one instance of the class can listen to a device anyhow
+Global __midiInOpenHandles := {}
+
+; Holds a refence to the system wide midi dll, so we don't have to open it
+; multiple times
+Global __midiDll := 0
+
+; The window to attach the midi callback listener to, which will default to
+; our gui window
+Global __midiInCallbackWindow := WinExist()
+
 
 ; Default label prefix
 Global midiLabelPrefix := "Midi"
 
 ; Enable or disable label event handling
-Global midiLabelCallbacks  := True
+Global midiLabelCallbacks := True
 
 ; Enable or disable lazy midi in event debugging via tooltips
-Global midiEventTooltips := False
+Global midiEventTooltips  := False
 
 
 ; Midi class interface
 Class Midi
 {
 
-  ; Class variables
-  midiInDevice := -1
-  midiInDll    := 0
-  midiInHandle := 0
-
-
   ; Instance creation
   __New( newMidiInDevice:=-1 )
   {
 
-    this.SetMidiInDevice( newMidiInDevice )
+    ; Initialize midi environment
     this.LoadMidi()
+    this.QueryMidiInDevices()
+    this.SetupDeviceMenus()
 
   }
-
 
   ; Instance destruction
   __Delete()
   {
 
-    this.StopMidiIn()
+    ; Stop all midi in devices and then unload the midi environment
+    this.CloseAllMidiIns()
     this.UnloadMidi()
-
-  }
-
-
-  ; Set the current midi in device
-  SetMidiInDevice( newMidiInDevice )
-  {
-
-    ; Bail out if this is already the midi device we are using
-    If ( newMidiInDevice == this.midiInDevice )
-      Return
- 
-    ; Bail out if no new midi in device was given
-    If ( newMidiInDevice < 0 )
-      Return
-
-    ; Stop listening to the current midi device (if applicable)
-    this.StopMidiIn()
-
-    ; Set the new midi in device and then start listening to it
-    this.midiInDevice := newMidiInDevice
-    this.StartMidiIn()
 
   }
 
@@ -113,9 +104,9 @@ Class Midi
   LoadMidi()
   {
     
-    this.midiDll := DllCall( "LoadLibrary", "Str", "winmm.dll", "Ptr" )
+    __midiDll := DllCall( "LoadLibrary", "Str", "winmm.dll", "Ptr" )
     
-    If ( ! this.midiDll )
+    If ( ! __midiDll )
     {
       MsgBox, Missing system midi library winmm.dll
       ExitApp
@@ -128,129 +119,122 @@ Class Midi
   UnloadMidi()
   {
 
-    If ( this.midiDll )
+    If ( __midiDll )
     {
-      DllCall( "FreeLibrary", "Ptr", this.midiDll )
+      DllCall( "FreeLibrary", "Ptr", __midiDll )
     }
 
   }
 
 
   ; Open midi in device and start listening
-  StartMidiIn()
+  OpenMidiIn( midiInDeviceId )
   {
 
-    ; Bail out if we don"t have a midi in device defined
-    If ( ! this.midiInDevice )
-    {
-      Return
-    }
-
-    ; Create variable to store the handle the dll open will give us
-    ; NOTE: Creating variables this way doesn't work with class variables, so
-    ; we have to create it locally and then store it in the class later after
-    VarSetCapacity( midiInHandle, 4, 0 )
-
-    ; Get the autohotkey window to attach the midi events to
-    thisWindow := WinExist()
-
-    ; Open the midi device and attach event callbacks
-    midiInOpenResult := DllCall( "winmm.dll\midiInOpen", UINT, &midiInHandle, UINT, this.midiInDevice, UINT, thisWindow, UINT, 0, UINT, MIDI_CALLBACK_WINDOW )
-
-    ; Error handling
-    If ( midiInOpenResult || ! midiInHandle )
-    {
-      MsgBox, Failed to open midi in device
-      ExitApp
-    }
-
-    ; Fetch the actual handle value from the pointer
-    midiInHandle := NumGet( midiInHandle, UINT )
-
-    ; Start monitoring midi signals
-    midiInStartResult := DllCall( "winmm.dll\midiInStart", UINT, midiInHandle )
-
-    ; Error handling
-    If ( midiInStartResult )
-    {
-      MsgBox, Failed to start midi in device
-      ExitApp
-    }
-
-    ; Save the midi input handle to our class instance now that we are done
-    ; messing with it
-    this.midiInHandle := midiInHandle
-
-    ; Create a spot in our global event storage for this midi input handle
-    __MidiInEvent[this.midiInHandle] := {}
-
-    ; Register a callback for each midi event
-    ; We only need to do this once per instance of our class, so if another
-    ; instance already did it then we don't need to
-    if ( ! __midiInListeners )
-    {
-      OnMessage( MIDI_OPEN,      "__MidiInCallback" )
-      OnMessage( MIDI_CLOSE,     "__MidiInCallback" )
-      OnMessage( MIDI_DATA,      "__MidiInCallback" )
-      OnMessage( MIDI_LONGDATA,  "__MidiInCallback" )
-      OnMessage( MIDI_ERROR,     "__MidiInCallback" )
-      OnMessage( MIDI_LONGERROR, "__MidiInCallback" )
-      OnMessage( MIDI_MOREDATA,  "__MidiInCallback" ) 
-    }
-
-    ; Increment the number of midi listeners
-    __midiInListeners++
-
+    __OpenMidiIn( midiInDeviceId )
+  
   }
 
 
   ; Close midi in device and stop listening
-  StopMidiIn()
+  CloseMidiIn( midiInDeviceId )
   {
 
-    ; Bail out if we don"t have a midi in handle open
-    If ( ! this.midiInHandle )
+    __CLoseMidiIn( midiInDeviceId )
+    
+  }
+
+
+  ; Close all currently open midi in devices
+  CloseAllMidiIns()
+  {
+
+    For midiInDeviceId, midiInHandle In __midiInOpenHandles
     {
+      this.CloseMidiIn( midiInDeviceId )
+    }
+
+  }
+
+
+  ; Query the system for a list of active midi input devices
+  QueryMidiInDevices()
+  {
+
+    midiInDevices := []
+
+    deviceCount := DllCall( "winmm.dll\midiOutGetNumDevs" ) - 1
+
+    Loop %deviceCount% 
+    {
+
+      midiInDevice := {}
+
+      deviceNumber := A_Index - 1
+
+      VarSetCapacity( midiInStruct, MIDI_DEVICE_IN_STRUCT_LENGTH, 0 )
+
+      midiQueryResult := DllCall( "winmm.dll\midiInGetDevCapsA", UINT, deviceNumber, PTR, &midiInStruct, UINT, MIDI_DEVICE_IN_STRUCT_LENGTH )
+
+      ; Error handling
+      If ( midiQueryResult )
+      {
+        MsgBox, Failed to query midi devices
+        Return
+      }
+
+      manufacturerID := NumGet( midiInStruct, 0, "USHORT" )
+      productID      := NumGet( midiInStruct, 2, "USHORT" )
+      driverVersion  := NumGet( midiInStruct, 4, "UINT" )
+      deviceName     := StrGet( &midiInStruct + 8, MIDI_DEVICE_NAME_LENGTH, "CP0" )
+      support        := NumGet( midiInStruct, 4, "UINT" )
+
+      midiInDevice.deviceNumber   := deviceNumber
+      midiInDevice.deviceName     := deviceName
+      midiInDevice.productID      := productID
+      midiInDevice.manufacturerID := manufacturerID
+      midiInDevice.driverVersion  := ( driverVersion & 0xF0 ) . "." . ( driverVersion & 0x0F )
+
+      __MidiEventDebug( midiInDevice )
+
+      midiInDevices[deviceNumber] := midiInDevice
+
+    }
+
+    __midiInDevices := midiInDevices
+
+  }
+
+
+  ; Set up device selection menus
+  SetupDeviceMenus()
+  {
+
+    For key, value In __midiInDevices
+    {
+      menuName := value.deviceName
+      Menu, __MidInDevices, Add, %menuName%, __SelectMidiInDevice
+    }
+
+    Menu, Tray, Add
+    Menu, Tray, Add, MIDI Input Devices, :__MidInDevices
+
+    Return
+
+    __SelectMidiInDevice:
+
+      midiInDeviceId := A_ThisMenuItemPos - 1
+
+      if ( __midiInOpenHandles[midiInDeviceId] > 0 )
+      {
+        __CloseMidiIn( midiInDeviceId )
+      }
+      else
+      {
+        __OpenMidiIn( midiInDeviceId )        
+      }
+
       Return
-    }
-
-    ; Unregister callbacks if we are the last 
-    if ( __midiInListeners <= 1 )
-    {
-      OnMessage( MIDI_OPEN,      "" )
-      OnMessage( MIDI_CLOSE,     "" )
-      OnMessage( MIDI_DATA,      "" )
-      OnMessage( MIDI_LONGDATA,  "" )
-      OnMessage( MIDI_ERROR,     "" )
-      OnMessage( MIDI_LONGERROR, "" )
-      OnMessage( MIDI_MOREDATA,  "" )
-    }
-
-    ; Decrement the number of midi listeners
-    __midiInListeners--
-
-    ; Destroy any midi in events that might be left over
-    __MidiInEvent[this.midiInHandle] := {}
-
-    ; Stop monitoring midi
-    midiInStopResult = DllCall( "winmm.dll\midiInStop", UINT, this.midiInHandle )
-
-    ; Error handling
-    If ( midiInStartResult )
-    {
-      MsgBox, Failed to stop midi in device
-      ExitApp
-    }
-
-    ; Close the midi handle
-    midiInStopResult = DllCall( "winmm.dll\midiInClose", UINT, this.midiInHandle )
-
-    ; Error handling
-    If ( midiInStartResult )
-    {
-      MsgBox, Failed to close midi in device
-      ExitApp
-    }
 
   }
 
@@ -272,16 +256,134 @@ Class Midi
   ; Syntactic sugar for returning last midi in event
   Values()
   {
-    Return this.LastMidiInEvent
+
+    Return this.LastMidiInEvent()
+  
   }
 
 
   ; Syntactic sugar for returning last midi in event
   Event()
   {
-    Return this.LastMidiInEvent
+
+    Return this.LastMidiInEvent()
+  
   }
 
+
+}
+
+
+; Open a handle to a midi device and start listening for messages
+__OpenMidiIn( midiInDeviceId )
+{
+
+  ; Look this device up in our device list
+  device := __midiInDevices[midiInDeviceId]
+
+  ; Create variable to store the handle the dll open will give us
+  ; NOTE: Creating variables this way doesn't work with class variables, so
+  ; we have to create it locally and then store it in the class later after
+  VarSetCapacity( midiInHandle, 4, 0 )
+
+  ; Open the midi device and attach event callbacks
+  midiInOpenResult := DllCall( "winmm.dll\midiInOpen", UINT, &midiInHandle, UINT, midiInDeviceId, UINT, __midiInCallbackWindow, UINT, 0, UINT, MIDI_CALLBACK_WINDOW )
+
+  ; Error handling
+  If ( midiInOpenResult || ! midiInHandle )
+  {
+    MsgBox, Failed to open midi in device
+    Return
+  }
+
+  ; Fetch the actual handle value from the pointer
+  midiInHandle := NumGet( midiInHandle, UINT )
+
+  ; Start monitoring midi signals
+  midiInStartResult := DllCall( "winmm.dll\midiInStart", UINT, midiInHandle )
+
+  ; Error handling
+  If ( midiInStartResult )
+  {
+    MsgBox, Failed to start midi in device
+    Return
+  }
+
+  ; Create a spot in our global event storage for this midi input handle
+  __MidiInEvent[midiInHandle] := {}
+
+  ; Register a callback for each midi event
+  ; We only need to do this once per instance of our class, so if another
+  ; instance already did it then we don't need to
+
+  ; if ( __midiInOpenHandles.MaxIndex() < 1 )
+  ; {
+    OnMessage( MIDI_OPEN,      "__MidiInCallback" )
+    OnMessage( MIDI_CLOSE,     "__MidiInCallback" )
+    OnMessage( MIDI_DATA,      "__MidiInCallback" )
+    OnMessage( MIDI_LONGDATA,  "__MidiInCallback" )
+    OnMessage( MIDI_ERROR,     "__MidiInCallback" )
+    OnMessage( MIDI_LONGERROR, "__MidiInCallback" )
+    OnMessage( MIDI_MOREDATA,  "__MidiInCallback" ) 
+  ; }
+
+  ; Add this device handle to our list of open devices
+  __midiInOpenHandles.Insert( midiInDeviceId, midiInHandle )
+
+  ; Check this device as enabled in the menu
+  menuDeviceName := device.deviceName
+  Menu __MidInDevices, Check, %menuDeviceName%
+
+}
+
+
+__CloseMidiIn( midiInDeviceId )
+{
+  
+  ; Look this device up in our device list
+  device := __midiInDevices[midiInDeviceId]
+
+  ; Unregister callbacks if we are the last 
+  ; if ( __midiInListeners < 1 )
+  ; {
+  ;   OnMessage( MIDI_OPEN,      "" )
+  ;   OnMessage( MIDI_CLOSE,     "" )
+  ;   OnMessage( MIDI_DATA,      "" )
+  ;   OnMessage( MIDI_LONGDATA,  "" )
+  ;   OnMessage( MIDI_ERROR,     "" )
+  ;   OnMessage( MIDI_LONGERROR, "" )
+  ;   OnMessage( MIDI_MOREDATA,  "" )
+  ; }
+
+  ; Destroy any midi in events that might be left over
+  __MidiInEvent[midiInHandle] := {}
+
+  ; Stop monitoring midi
+  midiInStopResult := DllCall( "winmm.dll\midiInStop", UINT, __midiInOpenHandles[midiInDeviceId] )
+
+  ; Error handling
+  If ( midiInStartResult )
+  {
+    MsgBox, Failed to stop midi in device
+    Return
+  }
+
+  ; Close the midi handle
+  midiInStopResult := DllCall( "winmm.dll\midiInClose", UINT, __midiInOpenHandles[midiInDeviceId] )
+
+  ; Error handling
+  If ( midiInStartResult )
+  {
+    MsgBox, Failed to close midi in device
+    Return
+  }
+
+  ; Finally, remove the handle from the array
+  __midiInOpenHandles.Remove( midiInDeviceId )
+
+  ; Check this device as enabled in the menu
+  menuDeviceName := device.deviceName
+  Menu __MidInDevices, Uncheck, %menuDeviceName%
 
 }
 
@@ -506,13 +608,13 @@ __MidiInCallback( wParam, lParam, msg )
   }
 
   ; Call debugging if enabled
-  __MidiInEventDebug( midiEvent )
+  __MidiEventDebug( midiEvent )
 
 }
 
 
 ; Send event information to a listening debugger
-__MidiInEventDebug( midiEvent )
+__MidiEventDebug( midiEvent )
 {
 
   debugStr := ""
@@ -530,4 +632,6 @@ __MidiInEventDebug( midiEvent )
     ToolTip, % debugStr
 
 }
+
+
 

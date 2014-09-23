@@ -6,7 +6,9 @@ Add MIDI input event handling to your AutoHotkey scripts
 
 #include AutoHotkey-Midi/Midi.ahk
 
-midi := new Midi( 5 )
+midi := new Midi()
+
+midi.OpenMidiIn( 5 )
 
 MidiNoteOnA4:
 	
