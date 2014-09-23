@@ -18,7 +18,7 @@ MidiNoteOnA4:
 MidiControlChange1:
 	cc := midi.MidiIn()
 	ccValue := cc.value
-	MsgBox You set the mod wheel to %cc.Value%
+	MsgBox You set the mod wheel to %ccValue%
 	Return
 
 ```
