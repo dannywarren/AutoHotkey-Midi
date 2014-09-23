@@ -45,8 +45,10 @@ Global MIDI_OCTAVES   := [ -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8 ]
 ; be accessed via the Midi object, since we cannot store it in the object due
 ; to how events work
 ; We will store the last event by the handle used to open the midi device, so
-; at least we won't clobber midi events from other instances of the object
-Global __midiInEvent := {}
+; at least we won't clobber midi events from other devices if the user wants 
+; to fetch them specifically
+Global __midiInEvent        := {}
+Global __midiInHandleEvent  := {}
 
 ; List of all midi input devices on the system
 Global __midiInDevices := {}
@@ -84,7 +86,7 @@ Class Midi
 {
 
   ; Instance creation
-  __New( newMidiInDevice:=-1 )
+  __New()
   {
 
     ; Initialize midi environment
@@ -98,8 +100,8 @@ Class Midi
   __Delete()
   {
 
-    ; Stop all midi in devices and then unload the midi environment
-    this.CloseAllMidiIns()
+    ; Close all midi in devices and then unload the midi environment
+    this.CloseMidiIns()
     this.UnloadMidi()
 
   }
@@ -151,10 +153,27 @@ Class Midi
 
 
   ; Close all currently open midi in devices
-  CloseAllMidiIns()
+  CloseMidiIns()
   {
 
-    For midiInDeviceId, midiInHandle In __midiInOpenHandles
+    If ( ! __midiInOpenHandlesCount )
+    {
+      Return
+    }
+
+    ; We have to store the handles we are going to close in advance, because
+    ; autohotkey gets confused if we are removing things from an array while
+    ; iterative over it
+    deviceIdsToClose := {}
+
+    ; Iterate once to get a list of ids to close
+    For midiInDeviceId In __midiInOpenHandles
+    {
+      deviceIdsToClose.Insert( midiInDeviceId )
+    }
+
+    ; Iterate again to actually close them
+    For index, midiInDeviceId In deviceIdsToClose
     {
       this.CloseMidiIn( midiInDeviceId )
     }
@@ -188,8 +207,8 @@ Class Midi
         Return
       }
 
-      manufacturerID := NumGet( midiInStruct, 0, "USHORT" )
-      productID      := NumGet( midiInStruct, 2, "USHORT" )
+      manufacturerId := NumGet( midiInStruct, 0, "USHORT" )
+      productId      := NumGet( midiInStruct, 2, "USHORT" )
       driverVersion  := NumGet( midiInStruct, 4, "UINT" )
       deviceName     := StrGet( &midiInStruct + 8, MIDI_DEVICE_NAME_LENGTH, "CP0" )
       support        := NumGet( midiInStruct, 4, "UINT" )
@@ -202,7 +221,7 @@ Class Midi
 
       __MidiEventDebug( midiInDevice )
 
-      midiInDevices[deviceNumber] := midiInDevice
+      midiInDevices.Insert( deviceNumber, midiInDevice )
 
     }
 
@@ -245,36 +264,10 @@ Class Midi
 
 
   ; Returns the last midi in event values
-  LastMidiInEvent()
+  MidiIn( midiInDeviceId)
   {
-
-    If ( ! this.midiInHandle )
-    {
-      Return
-    }
-
-    Return __MidiInEvent[this.midiInHandle]
-
+    Return __MidiInEvent
   }
-
-
-  ; Syntactic sugar for returning last midi in event
-  Values()
-  {
-
-    Return this.LastMidiInEvent()
-  
-  }
-
-
-  ; Syntactic sugar for returning last midi in event
-  Event()
-  {
-
-    Return this.LastMidiInEvent()
-  
-  }
-
 
 }
 
@@ -315,7 +308,7 @@ __OpenMidiIn( midiInDeviceId )
   }
 
   ; Create a spot in our global event storage for this midi input handle
-  __MidiInEvent[midiInHandle] := {}
+  __MidiInHandleEvent[midiInHandle] := {}
 
   ; Register a callback for each midi event
   ; We only need to do this once for all devices, so only do it if we are
@@ -346,7 +339,7 @@ __OpenMidiIn( midiInDeviceId )
 
 __CloseMidiIn( midiInDeviceId )
 {
-  
+ 
   ; Look this device up in our device list
   device := __midiInDevices[midiInDeviceId]
 
@@ -363,7 +356,7 @@ __CloseMidiIn( midiInDeviceId )
    }
 
   ; Destroy any midi in events that might be left over
-  __MidiInEvent[midiInHandle] := {}
+  __MidiInHandleEvent[midiInHandle] := {}
 
   ; Stop monitoring midi
   midiInStopResult := DllCall( "winmm.dll\midiInStop", UINT, __midiInOpenHandles[midiInDeviceId] )
@@ -604,7 +597,8 @@ __MidiInCallback( wParam, lParam, msg )
 
   ; Store this midi in event in our global array of midi messages, so that the
   ; appropriate midi class an access it later
-  __MidiInEvent[wParam] := midiEvent
+  __MidiInEvent               := midiEvent
+  __MidiInHandleEvent[wParam] := midiEvent
 
   ; Iterate over all the label callbacks we built during this event and jump
   ; to them now (if they exist elsewhere in the code)
