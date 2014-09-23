@@ -264,7 +264,7 @@ Class Midi
 
 
   ; Returns the last midi in event values
-  MidiIn( midiInDeviceId)
+  MidiIn()
   {
     Return __MidiInEvent
   }
