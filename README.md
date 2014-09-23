@@ -36,6 +36,3 @@ BSD
 
 * Documentation!
 * Midi output event support
-* Midi device selection in autohotkey menu
-* Midi reinit on device change
-* Object scoped callbacks (most likely not possible with pure autothotkey)
