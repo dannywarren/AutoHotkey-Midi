@@ -55,6 +55,11 @@ Global __midiInDevices := {}
 ; since only one instance of the class can listen to a device anyhow
 Global __midiInOpenHandles := {}
 
+; Count of open handles, since ahk doesn't have a method to actually count the
+; members of an array (it instead just returns the highest index, which isn't
+; the same thing)
+Global __midiInOpenHandlesCount := 0
+
 ; Holds a refence to the system wide midi dll, so we don't have to open it
 ; multiple times
 Global __midiDll := 0
@@ -313,11 +318,10 @@ __OpenMidiIn( midiInDeviceId )
   __MidiInEvent[midiInHandle] := {}
 
   ; Register a callback for each midi event
-  ; We only need to do this once per instance of our class, so if another
-  ; instance already did it then we don't need to
-
-  ; if ( __midiInOpenHandles.MaxIndex() < 1 )
-  ; {
+  ; We only need to do this once for all devices, so only do it if we are
+  ; the first device to be opened
+  if ( ! __midiInOpenHandlesCount )
+  {
     OnMessage( MIDI_OPEN,      "__MidiInCallback" )
     OnMessage( MIDI_CLOSE,     "__MidiInCallback" )
     OnMessage( MIDI_DATA,      "__MidiInCallback" )
@@ -325,10 +329,13 @@ __OpenMidiIn( midiInDeviceId )
     OnMessage( MIDI_ERROR,     "__MidiInCallback" )
     OnMessage( MIDI_LONGERROR, "__MidiInCallback" )
     OnMessage( MIDI_MOREDATA,  "__MidiInCallback" ) 
-  ; }
+  }
 
   ; Add this device handle to our list of open devices
   __midiInOpenHandles.Insert( midiInDeviceId, midiInHandle )
+
+  ; Increase the tally for the number of open handles we have
+  __midiInOpenHandlesCount++
 
   ; Check this device as enabled in the menu
   menuDeviceName := device.deviceName
@@ -343,17 +350,17 @@ __CloseMidiIn( midiInDeviceId )
   ; Look this device up in our device list
   device := __midiInDevices[midiInDeviceId]
 
-  ; Unregister callbacks if we are the last 
-  ; if ( __midiInListeners < 1 )
-  ; {
-  ;   OnMessage( MIDI_OPEN,      "" )
-  ;   OnMessage( MIDI_CLOSE,     "" )
-  ;   OnMessage( MIDI_DATA,      "" )
-  ;   OnMessage( MIDI_LONGDATA,  "" )
-  ;   OnMessage( MIDI_ERROR,     "" )
-  ;   OnMessage( MIDI_LONGERROR, "" )
-  ;   OnMessage( MIDI_MOREDATA,  "" )
-  ; }
+  ; Unregister callbacks if we are the last open handle
+  if ( __midiInOpenHandlesCount <= 1 )
+  {
+     OnMessage( MIDI_OPEN,      "" )
+     OnMessage( MIDI_CLOSE,     "" )
+     OnMessage( MIDI_DATA,      "" )
+     OnMessage( MIDI_LONGDATA,  "" )
+     OnMessage( MIDI_ERROR,     "" )
+     OnMessage( MIDI_LONGERROR, "" )
+     OnMessage( MIDI_MOREDATA,  "" )
+   }
 
   ; Destroy any midi in events that might be left over
   __MidiInEvent[midiInHandle] := {}
@@ -380,6 +387,9 @@ __CloseMidiIn( midiInDeviceId )
 
   ; Finally, remove the handle from the array
   __midiInOpenHandles.Remove( midiInDeviceId )
+
+  ; Decrease the tally for the number of open handles we have
+  __midiInOpenHandlesCount--
 
   ; Check this device as enabled in the menu
   menuDeviceName := device.deviceName
