@@ -414,7 +414,7 @@ __MidiInCallback( wParam, lParam, msg )
   data2     := (lParam >> 16) & 0xFF
 
   ; Determine the friendly name of the midi event based on the status byte
-  if ( highByte == 0x80 )
+  if ( highByte == 0x80 || ( highByte == 0x90 && data2 == 0 ) )
   {
     midiEvent.status := "NoteOff"
   }
