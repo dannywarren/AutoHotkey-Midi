@@ -383,7 +383,7 @@ Class Midi
 
   MidiOut(handle, EventType, Channel, Param1, Param2)
   {
-    ;h_midiout is handle to midi output device returned by midiOutOpen function
+    ;handle is handle to midi output device returned by midiOutOpen function
     ;EventType and Channel are combined to create the MidiStatus byte.  
     ;MidiStatus message table can be found at http://www.harmony-central.com/MIDI/Doc/table1.html
     ;Possible values for EventTypes are NoteOn (N1), NoteOff (N0), CC, PolyAT (PA), ChanAT (AT), PChange (PC), Wheel (W) - vals in () are optional shorthand 
@@ -397,15 +397,15 @@ Class Midi
       MidiStatus :=  143 + Channel
     Else if (EventType = "NoteOff" OR EventType = "N0")
       MidiStatus := 127 + Channel
-    Else if (EventType = "CC")
+    Else if (EventType = "ControlChange" OR EventType = "CC")
       MidiStatus := 175 + Channel
     Else if (EventType = "PolyAT" OR EventType = "PA")
       MidiStatus := 159 + Channel
     Else if (EventType = "ChanAT" OR EventType = "AT")
       MidiStatus := 207 + Channel
-    Else if (EventType = "PChange" OR EventType = "PC")
+    Else if (EventType = "ProgramChange" OR EventType = "PC")
       MidiStatus := 191 + Channel
-    Else if (EventType = "Wheel" OR EventType = "W")
+    Else if (EventType = "PitchWheel" OR EventType = "PW")
     {  
       MidiStatus := 223 + Channel
       Param2 := Param1 >> 8 ;MSB of wheel value
