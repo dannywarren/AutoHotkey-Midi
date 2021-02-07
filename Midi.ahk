@@ -53,17 +53,20 @@ Global MIDI_OCTAVES   := [ -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8 ]
 Global __midiInEvent        := {}
 Global __midiInHandleEvent  := {}
 
-; List of all midi input devices on the system
+; List of all midi input/output devices on the system
 Global __midiInDevices := {}
+Global __midiOutDevices := {}
 
-; List of midi input devices to listen to messages for, we do this globally
+; List of midi input/output devices to listen to messages for, we do this globally
 ; since only one instance of the class can listen to a device anyhow
 Global __midiInOpenHandles := {}
+Global __midiOutOpenHandles := {}
 
 ; Count of open handles, since ahk doesn't have a method to actually count the
 ; members of an array (it instead just returns the highest index, which isn't
 ; the same thing)
 Global __midiInOpenHandlesCount := 0
+Global __midiOutOpenHandlesCount := 0
 
 ; Holds a refence to the system wide midi dll, so we don't have to open it
 ; multiple times
@@ -104,8 +107,9 @@ Class Midi
   __Delete()
   {
 
-    ; Close all midi in devices and then unload the midi environment
+    ; Close all midi in/out devices and then unload the midi environment
     this.CloseMidiIns()
+    this.CloseMidiOuts()
     this.UnloadMidi()
 
   }
@@ -144,6 +148,18 @@ Class Midi
 
     __OpenMidiIn( midiInDeviceId )
   
+  }
+
+  ; Open midi in device and start listening
+  OpenMidiInByName( midiInDeviceName )
+  {
+    For key, value In __midiInDevices{
+      if (value.deviceName==midiInDeviceName){
+        __OpenMidiIn( key )
+        return key
+      }
+    }
+    return -1
   }
 
 
@@ -240,8 +256,20 @@ Class Midi
   OpenMidiOut( midiOutDeviceId )
   {
 
-    return __OpenMidiOut( midiOutDeviceId )
+    __OpenMidiOut( midiOutDeviceId )
   
+  }
+   ; Open midi out device and start listening
+  OpenMidiOutByName( midiOutDeviceName )
+  {
+
+    For key, value In __midiOutDevices{
+      if (value.deviceName==midiOutDeviceName){
+        __OpenMidiOut( key )
+        return key
+      }
+    }
+    return -1
   }
 
 
@@ -341,16 +369,28 @@ Class Midi
   ; Set up device selection menus
   SetupDeviceMenus()
   {
-
+    haveInDevices := false
     For key, value In __midiInDevices
     {
       menuName := value.deviceName
       Menu, __MidInDevices, Add, %menuName%, __SelectMidiInDevice
+      haveInDevices := true
+    }
+    haveOutDevices := false
+    For key, value In __midiOutDevices
+    {
+      menuName := value.deviceName
+      Menu, __MidOutDevices, Add, %menuName%, __SelectMidiOutDevice
+      haveOutDevices := true
     }
 
     Menu, Tray, Add
-    Menu, Tray, Add, MIDI Input Devices, :__MidInDevices
-;    Menu, Tray, Add, MIDI Output Devices, :__MidOutDevices
+    if (haveInDevices==true) {
+      Menu, Tray, Add, MIDI Input  Devices, :__MidInDevices
+    }
+    if (haveOutDevices==true) {
+      Menu, Tray, Add, MIDI Output Devices, :__MidOutDevices
+    }
 
     Return
 
@@ -367,6 +407,19 @@ Class Midi
         __OpenMidiIn( midiInDeviceId )        
       }
 
+      __SelectMidiOutDevice:
+
+      midiOutDeviceId := A_ThisMenuItemPos - 1
+
+      if ( __midiOutOpenHandles[midiOutDeviceId] > 0 )
+      {
+        __CloseMidiOut( midiOutDeviceId )
+      }
+      else
+      {
+        __OpenMidiOut( midiOutDeviceId )        
+      }
+
       Return
       
 
@@ -381,7 +434,7 @@ Class Midi
 
 
 
-  MidiOut(handle, EventType, Channel, Param1, Param2)
+  MidiOut(EventType, Channel, Param1, Param2)
   {
     ;handle is handle to midi output device returned by midiOutOpen function
     ;EventType and Channel are combined to create the MidiStatus byte.  
@@ -415,17 +468,22 @@ Class Midi
     ;Midi message Dword is made up of Midi Status in lowest byte, then 1st parameter, then 2nd parameter.  Highest byte is always 0
     dwMidi := MidiStatus + (Param1 << 8) + (Param2 << 16)
   
-    ;Call api function to send midi event  
-    result := DllCall("winmm.dll\midiOutShortMsg"
-              , UInt, handle
-              , UInt, dwMidi
-              , UInt)
-  
-    if (result or errorlevel)
+    ; handle
+    For midiOutDeviceId In __midiOutOpenHandles
     {
-      msgbox, There was an error sending the midi event
-      return -1
+      ;Call api function to send midi event  
+      result := DllCall("winmm.dll\midiOutShortMsg"
+                , UInt, __midiOutOpenHandles[midiOutDeviceId]
+                , UInt, dwMidi
+                , UInt)
+  
+      if (result or errorlevel)
+      {
+        msgbox, There was an error sending the midi event
+      }
     }
+
+
   return
   }
 
@@ -544,7 +602,7 @@ __CloseMidiIn( midiInDeviceId )
   ; Decrease the tally for the number of open handles we have
   __midiInOpenHandlesCount--
 
-  ; Check this device as enabled in the menu
+  ; Uncheck this device in the menu
   menuDeviceName := device.deviceName
   Menu __MidInDevices, Uncheck, %menuDeviceName%
 
@@ -884,10 +942,10 @@ __OpenMidiOut( midiOutDeviceId )
   __midiOutOpenHandlesCount++
 
   ; Check this device as enabled in the menu
-  ;menuDeviceName := device.deviceName
-  ;Menu __MidOutDevices, Check, %menuDeviceName%
+  menuDeviceName := device.deviceName
+  Menu __MidOutDevices, Check, %menuDeviceName%
 
-  return midiOutHandle
+  return
 
 }
 
@@ -915,8 +973,8 @@ __ClosemidiOut( midiOutDeviceId )
   ; Decrease the tally for the number of open handles we have
   __midiOutOpenHandlesCount--
 
-  ; Check this device as enabled in the menu
+  ; UnCheck this device in the menu
   menuDeviceName := device.deviceName
-  Menu __MidInDevices, Uncheck, %menuDeviceName%
+  Menu __MidOutDevices, Uncheck, %menuDeviceName%
 
 }
