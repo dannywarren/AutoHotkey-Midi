@@ -7,7 +7,12 @@ Add MIDI input event handling to your AutoHotkey scripts
 #include AutoHotkey-Midi/Midi.ahk
 
 midi := new Midi()
-midi.OpenMidiIn( 5 )
+midi.OpenMidiOutByName("X-TOUCH MINI")
+midi.OpenMidiInByName("X-TOUCH MINI")
+
+; send some  Outout
+midi.MidiOut("CC", 1, 127, 0) ; ControllerChange on Channel 1, Code 27
+midi.MidiOut("N1", 1, 1, 100) ; Note on On Channel 1, Note 1, Velocity 100
 
 Return
 
@@ -35,4 +40,3 @@ BSD
 ## TODO
 
 * Documentation!
-* Midi output event support
